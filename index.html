@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TheHolySite — Book Library</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        background: linear-gradient(to bottom, #fffaf5, #fdeff0);
+        color: #333;
+    }
+    header {
+        background: linear-gradient(to right, #5b4b8a, #8b75c9);
+        color: white;
+        padding: 1rem;
+        text-align: center;
+    }
+    header h1 {
+        margin: 0;
+    }
+    .container {
+        max-width: 1100px;
+        margin: auto;
+        padding: 1rem;
+    }
+    .flex {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+    .sidebar, .main {
+        background: white;
+        padding: 1rem;
+        border-radius: 8px;
+        box-shadow: 0px 0px 8px rgba(0,0,0,0.1);
+    }
+    .sidebar {
+        flex: 1 1 250px;
+    }
+    .main {
+        flex: 3 1 600px;
+    }
+    input, select, textarea, button {
+        width: 100%;
+        padding: 0.5rem;
+        margin-top: 0.3rem;
+        margin-bottom: 0.5rem;
+        border-radius: 4px;
+        border: 1px solid #ccc;
+    }
+    button {
+        background: #5b4b8a;
+        color: white;
+        border: none;
+        cursor: pointer;
+    }
+    button:hover {
+        background: #4a3a72;
+    }
+    .book-card {
+        display: flex;
+        gap: 1rem;
+        padding: 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        background: #fff;
+    }
+    .book-card img {
+        width: 80px;
+        height: 110px;
+        object-fit: cover;
+        border-radius: 4px;
+    }
+    .book-details {
+        flex: 1;
+    }
+    .controls button {
+        margin-right: 0.5rem;
+        margin-top: 0.5rem;
+    }
+    .modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .modal-content {
+        background: white;
+        max-width: 800px;
+        width: 90%;
+        max-height: 90%;
+        overflow: auto;
+        border-radius: 8px;
+        padding: 1rem;
+        position: relative;
+    }
+    .close-btn {
+        position: absolute;
+        right: 1rem;
+        top: 1rem;
+        cursor: pointer;
+        background: red;
+        color: white;
+        padding: 0.3rem 0.6rem;
+        border-radius: 4px;
+    }
+</style>
+</head>
+<body>
+
+<header>
+    <h1>TheHolySite</h1>
+    <p>Publish, read & share your books</p>
+</header>
+
+<div class="container flex">
+    <!-- Sidebar for adding books -->
+    <div class="sidebar">
+        <h2>Add a Book</h2>
+        <input id="title" placeholder="Title">
+        <input id="author" placeholder="Author">
+        <input id="category" placeholder="Category">
+        <select id="type">
+            <option>eBook</option>
+            <option>Audiobook</option>
+            <option>Devotional</option>
+            <option>Sermon</option>
+        </select>
+        <label>Cover Image (optional)</label>
+        <input type="file" id="cover" accept="image/*">
+        <label>Audio File (optional)</label>
+        <input type="file" id="audio" accept="audio/*">
+        <textarea id="content" placeholder="Book content here..." rows="6"></textarea>
+        <button onclick="addBook()">Publish Book</button>
+    </div>
+
+    <!-- Main section for library -->
+    <div class="main">
+        <div class="flex" style="gap:0.5rem;">
+            <input id="search" placeholder="Search..." oninput="renderBooks()">
+            <select id="filterCategory" onchange="renderBooks()"></select>
+            <select id="filterType" onchange="renderBooks()"></select>
+        </div>
+        <div id="bookList" class="flex" style="flex-direction: column; gap: 0.5rem; margin-top: 1rem;"></div>
+    </div>
+</div>
+
+<!-- Reader Modal -->
+<div id="readerModal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <span class="close-btn" onclick="closeReader()">X</span>
+        <h2 id="readerTitle"></h2>
+        <p><em id="readerMeta"></em></p>
+        <pre id="readerContent" style="white-space: pre-wrap;"></pre>
+        <div id="readerAudio"></div>
+    </div>
+</div>
+
+<script>
+let books = JSON.parse(localStorage.getItem('theholysite_books') || '[]');
+
+function saveBooks() {
+    localStorage.setItem('theholysite_books', JSON.stringify(books));
+}
+
+function addBook() {
+    const title = document.getElementById('title').value.trim();
+    const author = document.getElementById('author').value.trim() || "Unknown";
+    const category = document.getElementById('category').value.trim() || "General";
+    const type = document.getElementById('type').value;
+    const content = document.getElementById('content').value.trim();
+    const coverFile = document.getElementById('cover').files[0];
+    const audioFile = document.getElementById('audio').files[0];
+
+    if (!title || !content) {
+        alert("Title and content are required.");
+        return;
+    }
+
+    let coverData = null;
+    let audioData = null;
+
+    const readerPromises = [];
+
+    if (coverFile) {
+        readerPromises.push(new Promise(res => {
+            const r = new FileReader();
+            r.onload = e => { coverData = e.target.result; res(); };
+            r.readAsDataURL(coverFile);
+        }));
+    }
+
+    if (audioFile) {
+        readerPromises.push(new Promise(res => {
+            const r = new FileReader();
+            r.onload = e => { audioData = e.target.result; res(); };
+            r.readAsDataURL(audioFile);
+        }));
+    }
+
+    Promise.all(readerPromises).then(() => {
+        books.unshift({ id: Date.now(), title, author, category, type, content, coverData, audioData });
+        saveBooks();
+        renderBooks();
+        document.querySelectorAll('.sidebar input, .sidebar textarea').forEach(el => el.value = '');
+        document.getElementById('type').value = 'eBook';
+    });
+}
+
+function renderBooks() {
+    const search = document.getElementById('search').value.toLowerCase();
+    const filterCategory = document.getElementById('filterCategory').value;
+    const filterType = document.getElementById('filterType').value;
+    const list = document.getElementById('bookList');
+    list.innerHTML = '';
+
+    // Filters
+    let filtered = books.filter(b =>
+        (filterCategory === 'All' || b.category === filterCategory) &&
+        (filterType === 'All' || b.type === filterType) &&
+        (b.title.toLowerCase().includes(search) || b.author.toLowerCase().includes(search) || b.content.toLowerCase().includes(search))
+    );
+
+    // Category and Type filter dropdowns
+    const categories = ['All', ...new Set(books.map(b => b.category))];
+    const types = ['All', ...new Set(books.map(b => b.type))];
+    document.getElementById('filterCategory').innerHTML = categories.map(c => <option>${c}</option>).join('');
+    document.getElementById('filterType').innerHTML = types.map(t => <option>${t}</option>).join('');
+    document.getElementById('filterCategory').value = filterCategory;
+    document.getElementById('filterType').value = filterType;
+
+    if (filtered.length === 0) {
+        list.innerHTML = '<p>No books found.</p>';
+        return;
+    }
+
+    filtered.forEach(b => {
+        const card = document.createElement('div');
+        card.className = 'book-card';
+        card.innerHTML = `
+            <div>
+                ${b.coverData ? <img src="${b.coverData}"> : <div style="width:80px;height:110px;background:#eee;display:flex;align-items:center;justify-content:center;">No Cover</div>}
+            </div>
+            <div class="book-details">
+                <h3>${b.title}</h3>
+                <p><em>${b.author} • ${b.type} • ${b.category}</em></p>
+                <div class="controls">
+                    <button onclick="openReader(${b.id})">Read</button>
+                    ${b.audioData ? <button onclick="openReader(${b.id})">Listen</button> : ''}
+                    <button onclick="downloadTxt(${b.id})">Download</button>
+                    <button onclick="deleteBook(${b.id})" style="background:red;">Delete</button>
+                </div>
+            </div>
+        `;
+        list.appendChild(card);
+    });
+}
+
+function openReader(id) {
+    const book = books.find(b => b.id === id);
+    if (!book) return;
+    document.getElementById('readerTitle').textContent = book.title;
+    document.getElementById('readerMeta').textContent = By ${book.author} • ${book.type} • ${book.category};
+    document.getElementById('readerContent').textContent = book.content;
+    document.getElementById('readerAudio').innerHTML = book.audioData ? <audio controls src="${book.audioData}" style="width:100%;"></audio> : '';
+    document.getElementById('readerModal').style.display = 'flex';
+}
+
+function closeReader() {
+    document.getElementById('readerModal').style.display = 'none';
+}
+
+function downloadTxt(id) {
+    const book = books.find(b => b.id === id);
+    const blob = new Blob([book.title + "\\n\\nBy " + book.author + "\\n\\n" + book.content], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = book.title.replace(/\\s+/g, '_') + '.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function deleteBook(id) {
+    if (!confirm("Delete this book?")) return;
+    books = books.filter(b => b.id !== id);
+    saveBooks();
+    renderBooks();
+}
+
+renderBooks();
+</script>
+
+</body>
+</html>
